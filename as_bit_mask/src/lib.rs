@@ -3,6 +3,11 @@ pub trait AsBitMask<const N: usize> {
     fn from_bytes(bytes: &[u8; N]) -> Self;
 }
 
+pub trait AsBits<const N: usize> {
+    fn as_bits(&self) -> [bool; N];
+    fn from_bits(bytes: &[bool; N]) -> Self;
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -94,4 +99,76 @@ mod tests {
             assert_eq!(config, reconstructed);
         }
     }
+    #[test]
+    fn basic_as_bits_test() {
+        #[derive(as_bit_mask_derive::AsBits, Debug, PartialEq)]
+        pub struct BitsConfig {
+            feature_a: bool,
+            feature_b: bool,
+            feature_c: bool,
+            feature_d: bool,
+        }
+
+        let config = BitsConfig {
+            feature_a: true,
+            feature_b: false,
+            feature_c: true,
+            feature_d: false,
+        };
+
+        let bits = config.as_bits();
+        assert_eq!(bits, [true, false, true, false]);
+
+        let reconstructed = BitsConfig::from_bits(&bits);
+        assert_eq!(config, reconstructed);
+    }
+
+    #[test]
+    fn explicit_as_bits_test() {
+        #[derive(as_bit_mask_derive::AsBitsExplicit, Debug, PartialEq)]
+        #[total_bits(8)]
+        pub struct SparseConfig {
+            #[index(0)]
+            first: bool,
+            #[index(3)]
+            middle: bool,
+            #[index(7)]
+            last: bool,
+        }
+
+        let config = SparseConfig {
+            first: true,
+            middle: false,
+            last: true,
+        };
+
+        let bits = config.as_bits();
+        assert_eq!(bits, [true, false, false, false, false, false, false, true]);
+
+        let reconstructed = SparseConfig::from_bits(&bits);
+        assert_eq!(config, reconstructed);
+    }
+
+    #[test]
+    fn explicit_as_bits_without_total() {
+        #[derive(as_bit_mask_derive::AsBitsExplicit, Debug, PartialEq)]
+        pub struct MinimalConfig {
+            #[index(0)]
+            first: bool,
+            #[index(2)]
+            last: bool,
+        }
+
+        let config = MinimalConfig {
+            first: true,
+            last: false,
+        };
+
+        let bits = config.as_bits();
+        assert_eq!(bits, [true, false, false]);
+
+        let reconstructed = MinimalConfig::from_bits(&bits);
+        assert_eq!(config, reconstructed);
+    }
+
 }

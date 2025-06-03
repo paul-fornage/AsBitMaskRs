@@ -226,3 +226,194 @@ pub fn derive_as_bit_mask_explicit(input: TokenStream) -> TokenStream {
     // Return the generated implementation as a token stream
     expanded.into()
 }
+
+
+
+/// Automatically implements the AsBits trait for structs with boolean fields.
+///
+/// This macro will generate implementations for:
+/// - `as_bits`: Converts the boolean fields to a boolean array representation
+/// - `from_bits`: Constructs the struct from a boolean array representation
+///
+/// The length of the array is calculated based on the number of fields.
+#[proc_macro_derive(AsBits)]
+pub fn derive_as_bits(input: TokenStream) -> TokenStream {
+    // Parse the input tokens into a syntax tree
+    let input = parse_macro_input!(input as DeriveInput);
+
+    // Get the name of the struct
+    let struct_name = &input.ident;
+
+    // Extract fields from the struct
+    let fields = match &input.data {
+        Data::Struct(data_struct) => {
+            match &data_struct.fields {
+                Fields::Named(fields_named) => fields_named,
+                _ => panic!("AsBits derive only supports structs with named fields"),
+            }
+        },
+        _ => panic!("AsBits derive only supports structs"),
+    };
+
+    // Collect field names
+    let mut field_names = Vec::new();
+    for field in &fields.named {
+        if let Some(ident) = &field.ident {
+            field_names.push(ident);
+        }
+    }
+
+    // Get the total number of fields (bits)
+    let num_fields = field_names.len();
+
+    // Generate the expressions for as_bits method
+    let as_bits_expressions = field_names.iter().map(|field| {
+        quote! { self.#field }
+    });
+
+    // Generate the field initializers for from_bits method
+    let from_bits_initializers = field_names.iter().enumerate().map(|(idx, field)| {
+        quote! { #field: bits[#idx] }
+    });
+
+    // Generate the implementation
+    let expanded = quote! {
+        impl AsBits<#num_fields> for #struct_name {
+            fn as_bits(&self) -> [bool; #num_fields] {
+                [#(#as_bits_expressions),*]
+            }
+
+            fn from_bits(bits: &[bool; #num_fields]) -> Self {
+                #struct_name {
+                    #(#from_bits_initializers,)*
+                }
+            }
+        }
+    };
+
+    // Return the generated implementation as a token stream
+    expanded.into()
+}
+
+/// Automatically implements the AsBits trait for structs with boolean fields.
+///
+/// This macro will generate implementations for:
+/// - `as_bits`: Converts the boolean fields to a boolean array representation
+/// - `from_bits`: Constructs the struct from a boolean array representation
+///
+/// Example:
+/// ```no_run
+/// use crate::as_bit_mask_derive::AsBitsExplicit;
+///
+/// #[derive(AsBitsExplicit)]
+/// #[total_bits(32)]
+/// pub struct MyStruct{
+///     #[index(5)]
+///     a: bool,
+///     #[index(2)]
+///     b: bool,
+///     #[index(4)]
+///     c: bool,
+///     #[index(0)]
+///     d: bool,
+///     #[index(8)]
+///     e: bool,
+/// }
+/// ```
+#[proc_macro_derive(AsBitsExplicit, attributes(index, total_bits))]
+pub fn derive_as_bits_explicit(input: TokenStream) -> TokenStream {
+    // Parse the input tokens into a syntax tree
+    let input = parse_macro_input!(input as DeriveInput);
+
+    // Get the name of the struct
+    let struct_name = &input.ident;
+
+    // Look for the #[total_bits(n)] attribute
+    let mut total_bits = None;
+    for attr in &input.attrs {
+        if attr.path().is_ident("total_bits") {
+            let value = attr.parse_args::<syn::LitInt>().expect("total_bits must be an integer");
+            total_bits = Some(value.base10_parse::<usize>().expect("Failed to parse total_bits as usize"));
+        }
+    }
+
+    // Extract fields from the struct
+    let fields = match &input.data {
+        Data::Struct(data_struct) => {
+            match &data_struct.fields {
+                Fields::Named(fields_named) => fields_named,
+                _ => panic!("AsBitsExplicit derive only supports structs with named fields"),
+            }
+        },
+        _ => panic!("AsBitsExplicit derive only supports structs"),
+    };
+
+    // Collect field names and their explicit indices
+    let mut field_data = Vec::new();
+    for field in &fields.named {
+        if let Some(ident) = &field.ident {
+            // Look for the #[index(n)] attribute
+            let mut index = None;
+            for attr in &field.attrs {
+                if attr.path().is_ident("index") {
+                    // Parse the index value from the attribute
+                    let index_value = attr.parse_args::<syn::LitInt>().expect("Index must be an integer");
+                    index = Some(index_value.base10_parse::<usize>().expect("Failed to parse index as usize"));
+                }
+            }
+
+            let idx = index.expect(&format!("Field '{}' is missing #[index(n)] attribute", ident));
+            field_data.push((ident, idx));
+        }
+    }
+
+    // Find the maximum bit index
+    let max_index = field_data.iter()
+        .map(|(_, idx)| *idx)
+        .max()
+        .unwrap_or(0);
+
+    // Determine the array size (either from #[total_bits] or based on max_index)
+    let array_size = total_bits.unwrap_or(max_index + 1);
+
+    // Make sure the array size is sufficient for all fields
+    if array_size <= max_index {
+        panic!("total_bits value ({}) is too small for the maximum field index ({})",
+               array_size, max_index);
+    }
+
+    // Generate the expressions for as_bits method
+    let mut as_bits_expressions = Vec::new();
+    for i in 0..array_size {
+        let field_at_index = field_data.iter().find(|(_, idx)| *idx == i);
+
+        if let Some((field, _)) = field_at_index {
+            as_bits_expressions.push(quote! { self.#field });
+        } else {
+            as_bits_expressions.push(quote! { false });
+        }
+    }
+
+    // Generate the field initializers for from_bits method
+    let from_bits_initializers = field_data.iter().map(|(field, idx)| {
+        quote! { #field: bits[#idx] }
+    });
+
+    // Generate the implementation
+    let expanded = quote! {
+        impl AsBits<#array_size> for #struct_name {
+            fn as_bits(&self) -> [bool; #array_size] {
+                [#(#as_bits_expressions),*]
+            }
+
+            fn from_bits(bits: &[bool; #array_size]) -> Self {
+                #struct_name {
+                    #(#from_bits_initializers,)*
+                }
+            }
+        }
+    };
+
+    // Return the generated implementation as a token stream
+    expanded.into()
+}
