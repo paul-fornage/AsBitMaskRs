@@ -3,8 +3,6 @@ pub trait AsBitMask<const N: usize> {
     fn from_bytes(bytes: &[u8; N]) -> Self;
 }
 
-pub use as_bit_mask_derive::AsBitMask;
-pub use as_bit_mask_derive::AsBitMaskExplicit;
 
 #[cfg(test)]
 mod tests {
