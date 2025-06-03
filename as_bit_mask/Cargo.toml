@@ -1,0 +1,10 @@
+[package]
+name = "as_bit_mask"
+version = "0.1.0"
+edition = "2024"
+authors = ["paul fornage <paul@fornage.net>"]
+repository = "https://github.com/paul-fornage/AsBitMaskRs"
+
+
+[dependencies]
+as_bit_mask_derive = { path = "../as_bit_mask_derive" }

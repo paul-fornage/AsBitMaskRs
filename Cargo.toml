@@ -1,0 +1,3 @@
+[workspace]
+members = ["as_bit_mask", "as_bit_mask_derive"]
+resolver = "3"
